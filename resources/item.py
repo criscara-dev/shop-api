@@ -1,9 +1,10 @@
 from flask_restful import Resource, reqparse
 from flask_jwt import jwt_required
 import sqlite3
+from models.item import ItemModel
 
 class Item(Resource):  
-    TABLE_NAME = 'items'
+    
     parser = reqparse.RequestParser()
     parser.add_argument('price',
         type=float,
@@ -14,53 +15,28 @@ class Item(Resource):
 
     @jwt_required()
     def get(self, name):
-        item = self.find_by_name(name)
+        item = ItemModel.find_by_name(name)
 
         if item:
-            return item
+            return item.json()
         return {'message':'Item not found'}, 404
-
-
-    @classmethod
-    def find_by_name(cls,name):
-        connection = sqlite3.connect('data.db')
-        cursor = connection.cursor()
-
-        query = "SELECT * FROM {table} WHERE name=?".format(table=cls.TABLE_NAME)
-        result = cursor.execute(query, (name,))
-        row = result.fetchone()
-        connection.close()
-
-        if row:
-            return {'item':{'name':row[0],'price':row[1]}}
-
 
     @jwt_required()
     def post(self, name):
-        if self.find_by_name(name):
+        if ItemModel.find_by_name(name):
             return {f'message': "An item with name '{self.name}' already exists."}, 400 # error with the request
         
         data = Item.parser.parse_args()
 
-        item = {'name': name,'price': data['price']} 
+        item = ItemModel('name',data['price']) 
         try:
-            self.insert(item)
+            item.insert()
         except:
             return {'message':'An error occurred inserting the item.'}, 500 # internal server error
         
-        return item, 201
+        return item.json(), 201
 
-    @classmethod
-    def insert(cls, item):
-        connection = sqlite3.connect('data.db')
-        cursor = connection.cursor()
-
-        query = "INSERT INTO {table} VALUES (?,?)".format(table=cls.TABLE_NAME)
-        cursor.execute(query, (item['name'], item['price']))
-
-        connection.commit()
-        connection.close()
-    
+   
     
     # to delete an item I have to ricreate the list without the one I want to get rid. Weird.
     @jwt_required()
@@ -68,7 +44,7 @@ class Item(Resource):
         connection = sqlite3.connect('data.db')
         cursor = connection.cursor()
 
-        query = "DELETE FROM {table} WHERE name=?".format(table=self.TABLE_NAME)
+        query = "DELETE FROM items WHERE name=?"
         cursor.execute(query, (name,))
 
         connection.commit()
@@ -81,40 +57,30 @@ class Item(Resource):
     def put(self, name):
         data = Item.parser.parse_args()
         # Once again, print something not in the args to verify everything works
-        item = self.find_by_name(name)
-        updated_item = {'name': name, 'price': data['price']}
+        item = ItemModel.find_by_name(name)
+        updated_item = ItemModel('name',data['price']) 
 
         if item is None:
             try:
-                self.insert(updated_item)
+                updated_item.insert()
             except:
                 return {'message':'An error occurred inserting the item.'}, 500
         else:
             try:
-                self.update(updated_item)
+                updated_item.update()
             except:
                 return {'message':'An error occurred updating the item.'}, 500
-        return updated_item
+        return updated_item.json()
 
-    @classmethod
-    def update(cls, item):
-        connection = sqlite3.connect('data.db')
-        cursor = connection.cursor()
-
-        query = "UPDATE {table} SET price=? WHERE name=?".format(table=cls.TABLE_NAME)
-        cursor.execute(query, (item['price'], item['name']))
-
-        connection.commit()
-        connection.close()
+    
 
 class ItemList(Resource):
-    TABLE_NAME = 'items'
 
     def get(self):
         connection = sqlite3.connect('data.db')
         cursor = connection.cursor()
 
-        query = "SELECT * FROM {table}".format(table=self.TABLE_NAME)
+        query = "SELECT * FROM items"
         result = cursor.execute(query)
 
         items = []
